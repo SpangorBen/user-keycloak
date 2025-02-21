@@ -7,16 +7,15 @@ import com.javarta.ecommerce.user_keycloak.services.UserService;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -24,17 +23,12 @@ public class UserServiceImpl implements UserService {
     @Value("${keycloak.realm}")
     private String realm;
 
-    private final Keycloak keycloak;
-
-    public UserServiceImpl(Keycloak keycloak) {
-        this.keycloak = keycloak;
-    }
+    @Autowired
+    private Keycloak keycloak;
 
 
     @Override
-    public UserRegistrationDTO registerUser(UserRegistrationDTO userRegistrationDTO){
-
-        System.out.println("start of the method");
+    public UserRegistrationDTO registerUser(UserRegistrationDTO userRegistrationDTO) {
         UserRepresentation user = new UserRepresentation();
         user.setEnabled(true);
         user.setUsername(userRegistrationDTO.getUsername());
@@ -43,38 +37,20 @@ public class UserServiceImpl implements UserService {
         user.setLastName(userRegistrationDTO.getLastName());
         user.setEmailVerified(true);
 
-        System.out.println("user enabled");
-
         CredentialRepresentation credential = new CredentialRepresentation();
         credential.setValue(userRegistrationDTO.getPassword());
         credential.setType(CredentialRepresentation.PASSWORD);
         credential.setTemporary(false);
         user.setCredentials(Collections.singletonList(credential));
 
-        System.out.println("credential set");
+        Response response = getUsersResource().create(user);
 
-        List<CredentialRepresentation> list = new ArrayList<>();
-        list.add(credential);
-        user.setCredentials(list);
-
-        UsersResource users = getUsersResource();
-        System.out.println("response: " + users);
-
-        Response response = users.create(user);
-
-        if (Objects.equals(response.getStatus(), 201)) {
+        if (response.getStatus() == 201) {
             return userRegistrationDTO;
         } else {
             System.out.println("Error: " + response.getStatus());
+            return null;
         }
-
-        return null;
-
-    }
-
-    private UsersResource getUsersResource() {
-        RealmResource realm1 = keycloak.realm(realm);
-        return realm1.users();
     }
 
     @Override
@@ -88,21 +64,40 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserProfileDTO getUserProfile(String username) {
-        return null;
+    public UserProfileDTO getUserProfile(String userId) {
+        UserResource userResource = getUsersResource().get(userId);
+        UserRepresentation userRepresentation = userResource.toRepresentation();
+
+        UserProfileDTO profile = new UserProfileDTO();
+        profile.setFirstName(userRepresentation.getFirstName());
+        profile.setLastName(userRepresentation.getLastName());
+        profile.setEmail(userRepresentation.getEmail());
+        return profile;
     }
 
     @Override
-    public void updateProfile(String username, UserProfileDTO profileDTO) {
-
+    public void updateProfile(String userId, UserProfileDTO profileDTO) {
+        UserResource userResource = getUsersResource().get(userId);
+        UserRepresentation user = userResource.toRepresentation();
+        user.setFirstName(profileDTO.getFirstName());
+        user.setLastName(profileDTO.getLastName());
+        user.setEmail(profileDTO.getEmail());
+        getUsersResource().get(userId).update(user);
     }
 
     @Override
-    public void resetPassword(String username, PasswordResetDTO passwordDTO) {
-
+    public void resetPassword(String userId, PasswordResetDTO passwordDTO) {
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setTemporary(false);
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(passwordDTO.getNewPassword());
+        UserResource userResource = getUsersResource().get(userId);
+        userResource.resetPassword(credential);
     }
 
-
-
+    private UsersResource getUsersResource() {
+        RealmResource realm1 = keycloak.realm(realm);
+        return realm1.users();
+    }
 
 }
